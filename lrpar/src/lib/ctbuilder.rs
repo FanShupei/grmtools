@@ -147,7 +147,7 @@ impl Visibility {
 
 /// A `CTParserBuilder` allows one to specify the criteria for building a statically generated
 /// parser.
-pub struct CTParserBuilder<'a, LexerTypesT: LexerTypes>
+pub struct CTParserBuilder<LexerTypesT: LexerTypes>
 where
     LexerTypesT::StorageT: Eq + Hash,
     usize: AsPrimitive<LexerTypesT::StorageT>,
@@ -157,7 +157,7 @@ where
     // changed, the grammar is rebuilt.
     grammar_path: Option<PathBuf>,
     output_path: Option<PathBuf>,
-    mod_name: Option<&'a str>,
+    mod_name: Option<String>,
     recoverer: RecoveryKind,
     yacckind: Option<YaccKind>,
     error_on_conflicts: bool,
@@ -169,10 +169,9 @@ where
 }
 
 impl<
-        'a,
         StorageT: 'static + Debug + Hash + PrimInt + Serialize + Unsigned,
         LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > CTParserBuilder<'a, LexerTypesT>
+    > CTParserBuilder<LexerTypesT>
 where
     usize: AsPrimitive<StorageT>,
 {
@@ -287,8 +286,8 @@ where
     /// Set the generated module name to `mod_name`. If no module name is specified,
     /// [CTParserBuilder::build] will attempt to create a sensible default based on the grammar
     /// filename.
-    pub fn mod_name(mut self, mod_name: &'a str) -> Self {
-        self.mod_name = Some(mod_name);
+    pub fn mod_name(mut self, mod_name: &str) -> Self {
+        self.mod_name = Some(mod_name.to_owned());
         self
     }
 
@@ -533,7 +532,7 @@ where
             }
         }
 
-        let mod_name = match self.mod_name {
+        let mod_name = match &self.mod_name {
             Some(s) => s.to_owned(),
             None => {
                 // The user hasn't specified a module name, so we create one automatically: what we
@@ -652,7 +651,7 @@ where
         let cl: CTParserBuilder<LexerTypesT> = CTParserBuilder {
             grammar_path: self.grammar_path.clone(),
             output_path: self.output_path.clone(),
-            mod_name: self.mod_name,
+            mod_name: self.mod_name.clone(),
             recoverer: self.recoverer,
             yacckind: self.yacckind,
             error_on_conflicts: self.error_on_conflicts,

@@ -80,7 +80,7 @@ pub enum RustEdition {
 
 /// A `CTLexerBuilder` allows one to specify the criteria for building a statically generated
 /// lexer.
-pub struct CTLexerBuilder<'a, LexerTypesT: LexerTypes = DefaultLexerTypes<u32>>
+pub struct CTLexerBuilder<LexerTypesT: LexerTypes = DefaultLexerTypes<u32>>
 where
     LexerTypesT::StorageT: Debug + Eq + Hash,
     usize: num_traits::AsPrimitive<LexerTypesT::StorageT>,
@@ -89,7 +89,7 @@ where
     lexer_path: Option<PathBuf>,
     output_path: Option<PathBuf>,
     lexerkind: LexerKind,
-    mod_name: Option<&'a str>,
+    mod_name: Option<String>,
     visibility: Visibility,
     rust_edition: RustEdition,
     rule_ids_map: Option<HashMap<String, LexerTypesT::StorageT>>,
@@ -98,14 +98,14 @@ where
     regex_options: RegexOptions,
 }
 
-impl<'a> CTLexerBuilder<'a, DefaultLexerTypes<u32>> {
+impl<'a> CTLexerBuilder<DefaultLexerTypes<u32>> {
     /// Create a new [CTLexerBuilder].
     pub fn new() -> Self {
         CTLexerBuilder::<DefaultLexerTypes<u32>>::new_with_lexemet()
     }
 }
 
-impl<'a, LexerTypesT: LexerTypes> CTLexerBuilder<'a, LexerTypesT>
+impl<'a, LexerTypesT: LexerTypes> CTLexerBuilder<LexerTypesT>
 where
     LexerTypesT::StorageT:
         'static + Debug + Eq + Hash + PrimInt + Serialize + TryFrom<usize> + Unsigned,
@@ -252,7 +252,7 @@ where
     /// [`process_file`](#method.process_file) will attempt to create a sensible default based on
     /// the input filename.
     pub fn mod_name(mut self, mod_name: &'a str) -> Self {
-        self.mod_name = Some(mod_name);
+        self.mod_name = Some(mod_name.to_owned());
         self
     }
 
@@ -390,7 +390,7 @@ where
             panic!();
         }
 
-        let mod_name = match self.mod_name {
+        let mod_name = match &self.mod_name {
             Some(s) => s.to_owned(),
             None => {
                 // The user hasn't specified a module name, so we create one automatically: what we
