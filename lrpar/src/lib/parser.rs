@@ -9,7 +9,7 @@ use std::{
 };
 
 use cactus::Cactus;
-use cfgrammar::{yacc::YaccGrammar, RIdx, Span, Storage, TIdx};
+use cfgrammar::{yacc::YaccGrammar, PIdx, RIdx, Span, Storage, TIdx};
 use lrtable::{Action, StIdx, StateTable};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -63,7 +63,8 @@ impl<LexemeT: Lexeme<StorageT>, StorageT: Storage> Node<LexemeT, StorageT> {
 
 type PStack<StorageT> = Vec<StIdx<StorageT>>; // Parse stack
 type TokenCostFn<'a, StorageT> = &'a (dyn Fn(TIdx<StorageT>) -> u8 + 'a);
-type ActionFn<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT> = &'a dyn Fn(
+type ActionFn<'b, 'input, StorageT, LexerTypesT, ActionT, ParamT> = fn(
+    PIdx<StorageT>,
     RIdx<StorageT>,
     &'b dyn NonStreamingLexer<'input, LexerTypesT>,
     Span,
@@ -94,7 +95,7 @@ pub(super) struct Parser<
     // In the long term, we should remove the `lexemes` field entirely, as the `NonStreamingLexer` API is
     // powerful enough to allow us to incrementally obtain lexemes and buffer them when necessary.
     pub(super) lexemes: Vec<LexerTypesT::LexemeT>,
-    actions: &'a [ActionFn<'a, 'b, 'input, LexerTypesT::StorageT, LexerTypesT, ActionT, ParamT>],
+    actions: ActionFn<'b, 'input, LexerTypesT::StorageT, LexerTypesT, ActionT, ParamT>,
     param: ParamT,
 }
 
@@ -115,18 +116,6 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
         for tidx in grm.iter_tidxs() {
             assert!(token_cost(tidx) > 0);
         }
-        let mut actions: Vec<
-            ActionFn<
-                'a,
-                'b,
-                'input,
-                StorageT,
-                LexerTypesT,
-                Node<LexerTypesT::LexemeT, StorageT>,
-                (),
-            >,
-        > = Vec::new();
-        actions.resize(usize::from(grm.prods_len()), &action_generictree);
         let psr = Parser {
             rcvry_kind,
             grm,
@@ -134,7 +123,7 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
             stable,
             lexer,
             lexemes,
-            actions: actions.as_slice(),
+            actions: action_generictree,
             param: (),
         };
         let mut pstack = vec![stable.start_state()];
@@ -150,6 +139,7 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
 /// Usually you should just use the action kind directly. But you can also call this from
 /// within a custom action to return a generic parse tree with custom behavior.
 pub fn action_generictree<StorageT, LexerTypesT: LexerTypes>(
+    _pidx: PIdx<StorageT>,
     ridx: RIdx<StorageT>,
     _lexer: &dyn NonStreamingLexer<LexerTypesT>,
     _span: Span,
@@ -183,8 +173,6 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
         for tidx in grm.iter_tidxs() {
             assert!(token_cost(tidx) > 0);
         }
-        let mut actions: Vec<ActionFn<'a, 'b, 'input, StorageT, LexerTypesT, (), ()>> = Vec::new();
-        actions.resize(usize::from(grm.prods_len()), &Parser::noaction);
         let psr = Parser {
             rcvry_kind,
             grm,
@@ -192,7 +180,7 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
             stable,
             lexer,
             lexemes,
-            actions: actions.as_slice(),
+            actions: Parser::noaction,
             param: (),
         };
         let mut pstack = vec![stable.start_state()];
@@ -204,6 +192,7 @@ impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT
     }
 
     fn noaction(
+        _pidx: PIdx<StorageT>,
         _ridx: RIdx<StorageT>,
         _lexer: &dyn NonStreamingLexer<LexerTypesT>,
         _span: Span,
@@ -230,7 +219,7 @@ impl<
         stable: &'a StateTable<StorageT>,
         lexer: &'b dyn NonStreamingLexer<'input, LexerTypesT>,
         lexemes: Vec<LexerTypesT::LexemeT>,
-        actions: &'a [ActionFn<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>],
+        actions: ActionFn<'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>,
         param: ParamT,
     ) -> (Option<ActionT>, Vec<LexParseError<StorageT, LexerTypesT>>) {
         for tidx in grm.iter_tidxs() {
@@ -301,7 +290,8 @@ impl<
                     spans.truncate(pop_idx - 1);
                     spans.push(span);
 
-                    let v = AStackType::ActionType(self.actions[usize::from(pidx)](
+                    let v = AStackType::ActionType((self.actions)(
+                        pidx,
                         ridx,
                         self.lexer,
                         span,
@@ -419,7 +409,8 @@ impl<
                             spans_uw.truncate(pop_idx - 1);
                             spans_uw.push(span);
 
-                            let v = AStackType::ActionType(self.actions[usize::from(pidx)](
+                            let v = AStackType::ActionType((self.actions)(
+                                pidx,
                                 ridx,
                                 self.lexer,
                                 span,
@@ -824,7 +815,7 @@ impl<'a, StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
     pub fn parse_actions<'b: 'a, 'input: 'b, ActionT: 'a, ParamT: Copy>(
         &self,
         lexer: &'b dyn NonStreamingLexer<'input, LexerTypesT>,
-        actions: &'a [ActionFn<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>],
+        actions: ActionFn<'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>,
         param: ParamT,
     ) -> (Option<ActionT>, Vec<LexParseError<StorageT, LexerTypesT>>) {
         let mut lexemes = vec![];

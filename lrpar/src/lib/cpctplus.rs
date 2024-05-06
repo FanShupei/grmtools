@@ -106,8 +106,7 @@ struct CPCTPlus<
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
-> 
-{
+> {
     parser: &'a Parser<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>,
 }
 
@@ -119,8 +118,7 @@ pub(super) fn recoverer<
     ParamT: Copy,
 >(
     parser: &'a Parser<StorageT, LexerTypesT, ActionT, ParamT>,
-) -> Box<dyn Recoverer<StorageT, LexerTypesT, ActionT, ParamT> + 'a>
-{
+) -> Box<dyn Recoverer<StorageT, LexerTypesT, ActionT, ParamT> + 'a> {
     Box::new(CPCTPlus { parser })
 }
 
@@ -457,8 +455,7 @@ fn apply_repairs<
     astack: &mut Option<&mut Vec<AStackType<LexerTypesT::LexemeT, ActionT>>>,
     spans: &mut Option<&mut Vec<Span>>,
     repairs: &[ParseRepair<LexerTypesT::LexemeT, StorageT>],
-) -> usize
-{
+) -> usize {
     for r in repairs.iter() {
         match *r {
             ParseRepair::Insert(tidx) => {
@@ -490,8 +487,7 @@ fn simplify_repairs<
 >(
     parser: &Parser<StorageT, LexerTypesT, ActionT, ParamT>,
     all_rprs: &mut Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>,
-)
-{
+) {
     for rprs in &mut all_rprs.iter_mut() {
         // Remove shifts from the end of repairs
         while !rprs.is_empty() {
@@ -553,8 +549,7 @@ fn rank_cnds<
     in_laidx: usize,
     in_pstack: &[StIdx<StorageT>],
     in_cnds: Vec<Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>>,
-) -> Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>
-{
+) -> Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>> {
     let mut cnds = Vec::new();
     let mut furthest = 0;
     for rpr_seqs in in_cnds {

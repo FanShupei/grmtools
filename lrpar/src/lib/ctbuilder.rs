@@ -811,48 +811,22 @@ impl<StorageT: Storage + Serialize, LexerTypesT: LexerTypes<StorageT = StorageT>
         };
         match self.yacckind.unwrap() {
             YaccKind::Original(YaccOriginalActionKind::UserAction) | YaccKind::Grmtools => {
-                // action function references
-                let wrappers = grm
-                    .iter_pidxs()
-                    .map(|pidx| {
-                        format!(
-                            "&{prefix}wrapper_{}",
-                            usize::from(pidx),
-                            prefix = ACTION_PREFIX
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",\n                        ");
-                let (parse_param, parse_paramty) = match grm.parse_param() {
+                let (parse_param, _parse_paramty) = match grm.parse_param() {
                     Some((name, tyname)) => (name.clone(), tyname.clone()),
                     None => ("()".to_owned(), "()".to_owned()),
                 };
-                write!(outs,
-                    "\n        #[allow(clippy::type_complexity)]
-        let actions: ::std::vec::Vec<&dyn Fn(::cfgrammar::RIdx<{storaget}>,
-                       &'lexer dyn ::lrpar::NonStreamingLexer<'input, {lexertypest}>,
-                       ::cfgrammar::Span,
-                       ::std::vec::Drain<{edition_lifetime} ::lrpar::parser::AStackType<<{lexertypest} as ::lrpar::LexerTypes>::LexemeT, {actionskind}<'input>>>,
-                       {parse_paramty})
-                    -> {actionskind}<'input>> = ::std::vec![{wrappers}];\n",
-                    actionskind = ACTIONS_KIND,
-                    storaget = type_name::<StorageT>(),
-                    lexertypest = type_name::<LexerTypesT>(),
-                    parse_paramty = parse_paramty,
-                    wrappers = wrappers,
-                    edition_lifetime = if self.rust_edition != RustEdition::Rust2015 { "'_, " } else { "" },
-                ).ok();
                 write!(
                     outs,
                     "
         match ::lrpar::RTParserBuilder::new(&grm, &stable)
             .recoverer(::lrpar::RecoveryKind::{recoverer})
-            .parse_actions(lexer, &actions, {parse_param}) {{
+            .parse_actions(lexer, {prefix}wrapper_dispatch, {parse_param}) {{
                 (Some({actionskind}::{actionskindprefix}{ridx}(x)), y) => (Some(x), y),
                 (None, y) => (None, y),
                 _ => unreachable!()
         }}",
                     parse_param = parse_param,
+                    prefix = ACTION_PREFIX,
                     actionskind = ACTIONS_KIND,
                     actionskindprefix = ACTIONS_KIND_PREFIX,
                     ridx = usize::from(self.user_start_ridx(grm)),
@@ -935,9 +909,9 @@ impl<StorageT: Storage + Serialize, LexerTypesT: LexerTypes<StorageT = StorageT>
 
         outs.push_str("\n\n    // Wrappers\n\n");
 
-        let (parse_paramname, parse_paramdef) = match grm.parse_param() {
-            Some((name, tyname)) => (name.to_owned(), format!("{}: {}", name, tyname)),
-            None => ("()".to_owned(), "_: ()".to_owned()),
+        let (parse_paramname, parse_paramty, parse_paramdef) = match grm.parse_param() {
+            Some((name, tyname)) => (name.to_owned(), tyname.clone(), format!("{}: {}", name, tyname)),
+            None => ("()".to_owned(), "()".to_owned(), "_: ()".to_owned()),
         };
         for pidx in grm.iter_pidxs() {
             let ridx = grm.prod_to_rule(pidx);
@@ -1050,6 +1024,42 @@ impl<StorageT: Storage + Serialize, LexerTypesT: LexerTypes<StorageT = StorageT>
             }
             outs.push_str("\n    }\n\n");
         }
+
+        // Action Table
+
+        write!(outs,
+            "    fn {prefix}wrapper_dispatch<'lexer, 'input: 'lexer>(
+                  {prefix}pidx: ::cfgrammar::PIdx<{storaget}>,
+                  {prefix}ridx: ::cfgrammar::RIdx<{storaget}>,
+                  {prefix}lexer: &'lexer dyn ::lrpar::NonStreamingLexer<'input, {lexertypest}>,
+                  {prefix}span: ::cfgrammar::Span,
+                  {prefix}args: ::std::vec::Drain<{edition_lifetime} ::lrpar::parser::AStackType<<{lexertypest} as ::lrpar::LexerTypes>::LexemeT, {actionskind}<'input>>>,
+                  {prefix}ctx: {parse_paramty})
+               -> {actionskind}<'input> {{\n",
+            storaget = type_name::<StorageT>(),
+            lexertypest = type_name::<LexerTypesT>(),
+            prefix = ACTION_PREFIX,
+            parse_paramty = parse_paramty,
+            actionskind = ACTIONS_KIND,
+            edition_lifetime = if self.rust_edition != RustEdition::Rust2015 { "'_, " } else { "" },
+        ).ok();
+
+        let wrappers = grm
+            .iter_pidxs()
+            .map(|pidx| {
+                format!(
+                    "            {prefix}wrapper_{pidx},\n",
+                    prefix = ACTION_PREFIX,
+                    pidx = usize::from(pidx),
+                )
+            })
+            .collect::<String>();
+        write!(outs, "        let action_table = &[\n{wrappers}    ];\n",).ok();
+        write!(outs, "        action_table[usize::from({prefix}pidx)]({prefix}ridx, {prefix}lexer, {prefix}span, {prefix}args, {prefix}ctx)\n",
+        prefix = ACTION_PREFIX)
+        .ok();
+
+        outs.push_str("    }\n\n");
 
         // Wrappers enum
 
