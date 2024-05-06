@@ -19,12 +19,11 @@ use bincode::{deserialize, serialize_into};
 use cfgrammar::{
     newlinecache::NewlineCache,
     yacc::{ast::ASTWithValidityInfo, YaccGrammar, YaccKind, YaccOriginalActionKind},
-    RIdx, Spanned, Symbol,
+    RIdx, Spanned, Storage, Symbol,
 };
 use filetime::FileTime;
 use lazy_static::lazy_static;
 use lrtable::{from_yacc, statetable::Conflicts, Minimiser, StateGraph, StateTable};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -50,11 +49,7 @@ struct CTConflictsError<StorageT: Eq + Hash> {
     stable: StateTable<StorageT>,
 }
 
-impl<StorageT> fmt::Display for CTConflictsError<StorageT>
-where
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> fmt::Display for CTConflictsError<StorageT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let conflicts = self.stable.conflicts().unwrap();
         write!(
@@ -66,11 +61,7 @@ where
     }
 }
 
-impl<StorageT> fmt::Debug for CTConflictsError<StorageT>
-where
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> fmt::Debug for CTConflictsError<StorageT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let conflicts = self.stable.conflicts().unwrap();
         write!(
@@ -82,12 +73,7 @@ where
     }
 }
 
-impl<StorageT> Error for CTConflictsError<StorageT>
-where
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-    usize: AsPrimitive<StorageT>,
-{
-}
+impl<StorageT: Storage> Error for CTConflictsError<StorageT> {}
 
 /// A string which uses `Display` for it's `Debug` impl.
 struct ErrorString(String);
@@ -147,11 +133,7 @@ impl Visibility {
 
 /// A `CTParserBuilder` allows one to specify the criteria for building a statically generated
 /// parser.
-pub struct CTParserBuilder<LexerTypesT: LexerTypes>
-where
-    LexerTypesT::StorageT: Eq + Hash,
-    usize: AsPrimitive<LexerTypesT::StorageT>,
-{
+pub struct CTParserBuilder<LexerTypesT: LexerTypes> {
     // Anything stored in here (except `output_path`, `conflicts`, and `error_on_conflict`) almost
     // certainly needs to be included as part of the rebuild_cache function below so that, if it's
     // changed, the grammar is rebuilt.
@@ -168,12 +150,8 @@ where
     phantom: PhantomData<LexerTypesT>,
 }
 
-impl<
-        StorageT: 'static + Debug + Hash + PrimInt + Serialize + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > CTParserBuilder<LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
+impl<StorageT: Storage + Serialize, LexerTypesT: LexerTypes<StorageT = StorageT>>
+    CTParserBuilder<LexerTypesT>
 {
     /// Create a new `CTParserBuilder`.
     ///
@@ -463,19 +441,21 @@ where
             Err(errs) => {
                 let mut line_cache = NewlineCache::new();
                 line_cache.feed(&inc);
-                return Err(ErrorString(if errs.len() + warnings.len() > 1 {
-                    // Indent under the "Error:" prefix.
-                    format!(
-                        "\n\t{}",
-                        errs.iter()
-                            .map(|e| spanned_fmt(e, &inc, &line_cache))
-                            .chain(warnings.iter().map(|w| spanned_fmt(w, &inc, &line_cache)))
-                            .collect::<Vec<_>>()
-                            .join("\n\t")
-                    )
-                } else {
-                    spanned_fmt(errs.first().unwrap(), &inc, &line_cache)
-                }))?;
+                return Err(ErrorString(
+                    if errs.len() + usize::from(warnings.len()) > 1 {
+                        // Indent under the "Error:" prefix.
+                        format!(
+                            "\n\t{}",
+                            errs.iter()
+                                .map(|e| spanned_fmt(e, &inc, &line_cache))
+                                .chain(warnings.iter().map(|w| spanned_fmt(w, &inc, &line_cache)))
+                                .collect::<Vec<_>>()
+                                .join("\n\t")
+                        )
+                    } else {
+                        spanned_fmt(errs.first().unwrap(), &inc, &line_cache)
+                    },
+                ))?;
             }
         };
 
@@ -1239,7 +1219,7 @@ fn str_escape(s: &str) -> String {
 /// This function is called by generated files; it exists so that generated files don't require a
 /// dependency on serde and rmps.
 #[doc(hidden)]
-pub fn _reconstitute<StorageT: DeserializeOwned + Hash + PrimInt + Unsigned>(
+pub fn _reconstitute<StorageT: Storage + DeserializeOwned>(
     grm_buf: &[u8],
     stable_buf: &[u8],
 ) -> (YaccGrammar<StorageT>, StateTable<StorageT>) {
@@ -1309,11 +1289,7 @@ where
     )>,
 }
 
-impl<StorageT> CTParser<StorageT>
-where
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> CTParser<StorageT> {
     /// Returns `true` if this compile-time parser was regenerated or `false` if it was not.
     pub fn regenerated(&self) -> bool {
         self.regenerated

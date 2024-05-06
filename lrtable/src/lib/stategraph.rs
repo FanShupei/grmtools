@@ -1,7 +1,6 @@
 use std::{collections::hash_map::HashMap, fmt::Write, hash::Hash};
 
-use cfgrammar::{yacc::YaccGrammar, Symbol, TIdx};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use cfgrammar::{types::Storage, yacc::YaccGrammar, Symbol, TIdx};
 
 use crate::{itemset::Itemset, StIdx};
 
@@ -14,10 +13,7 @@ pub struct StateGraph<StorageT: Eq + Hash> {
     edges: Vec<HashMap<Symbol<StorageT>, StIdx<StorageT>>>,
 }
 
-impl<StorageT: 'static + Hash + PrimInt + Unsigned> StateGraph<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> StateGraph<StorageT> {
     pub(crate) fn new(
         states: Vec<(Itemset<StorageT>, Itemset<StorageT>)>,
         start_state: StIdx<StorageT>,
@@ -41,7 +37,7 @@ where
     pub fn iter_stidxs(&self) -> Box<dyn Iterator<Item = StIdx<StorageT>>> {
         // We can use as safely, because we know that we're only generating integers from
         // 0..self.states.len() which we've already checked fits within StIdxStorageT.
-        Box::new((0..self.states.len()).map(|x| StIdx(x.as_())))
+        Box::new((0..self.states.len()).map(|x| StIdx::from_usize(x)))
     }
 
     /// Return the itemset for closed state `stidx`. Panics if `stidx` doesn't exist.
@@ -72,7 +68,7 @@ where
     /// the same number of core and closed states.
     pub fn all_states_len(&self) -> StIdx<StorageT> {
         // We checked in the constructor that self.states.len() can fit into StIdxStorageT
-        StIdx(self.states.len().as_())
+        StIdx::from_usize(self.states.len())
     }
 
     /// Return the state pointed to by `sym` from `stidx` or `None` otherwise.
@@ -97,10 +93,7 @@ where
     /// states are pretty printed; if set to false, all states (including non-core states) are
     /// pretty printed.
     pub fn pp(&self, grm: &YaccGrammar<StorageT>, core_states: bool) -> String {
-        fn num_digits<StorageT: 'static + Hash + PrimInt + Unsigned>(i: StIdx<StorageT>) -> usize
-        where
-            usize: AsPrimitive<StorageT>,
-        {
+        fn num_digits<StorageT: Storage>(i: StIdx<StorageT>) -> usize {
             if usize::from(i) == 0 {
                 1
             } else {
@@ -108,13 +101,10 @@ where
             }
         }
 
-        fn fmt_sym<StorageT: 'static + PrimInt + Unsigned>(
+        fn fmt_sym<StorageT: Storage>(
             grm: &YaccGrammar<StorageT>,
             sym: Symbol<StorageT>,
-        ) -> String
-        where
-            usize: AsPrimitive<StorageT>,
-        {
+        ) -> String {
             match sym {
                 Symbol::Rule(ridx) => grm.rule_name_str(ridx).to_string(),
                 Symbol::Token(tidx) => format!("'{}'", grm.token_name(tidx).unwrap_or("")),
@@ -164,7 +154,7 @@ where
                         seen_b = true;
                     }
                     // Since ctx is exactly tokens_len bits long, the call to as_ is safe.
-                    let tidx = TIdx(bidx.as_());
+                    let tidx = TIdx::from_usize(bidx);
                     if tidx == grm.eof_token_idx() {
                         o.push_str("'$'");
                     } else {
@@ -202,16 +192,14 @@ where
 use cfgrammar::SIdx;
 
 #[cfg(test)]
-pub(crate) fn state_exists<StorageT: 'static + Hash + PrimInt + Unsigned>(
+pub(crate) fn state_exists<StorageT: Storage>(
     grm: &YaccGrammar<StorageT>,
     is: &Itemset<StorageT>,
     nt: &str,
     prod_off: usize,
     dot: SIdx<StorageT>,
     la: Vec<&str>,
-) where
-    usize: AsPrimitive<StorageT>,
-{
+) {
     let ab_prod_off = grm.rule_to_prods(grm.rule_idx(nt).unwrap())[prod_off];
     let ctx = &is.items[&(ab_prod_off, dot)];
     for tidx in grm.iter_tidxs() {

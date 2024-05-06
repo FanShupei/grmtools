@@ -1,10 +1,9 @@
 use std::marker::PhantomData;
 
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 use vob::Vob;
 
 use super::YaccGrammar;
-use crate::{RIdx, Symbol, TIdx};
+use crate::{types::Storage, RIdx, Symbol, TIdx};
 
 /// `Firsts` stores all the first sets for a given grammar. For example, given this code and
 /// grammar:
@@ -30,10 +29,7 @@ pub struct YaccFirsts<StorageT> {
     phantom: PhantomData<StorageT>,
 }
 
-impl<StorageT: 'static + PrimInt + Unsigned> YaccFirsts<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> YaccFirsts<StorageT> {
     /// Generates and returns the firsts set for the given grammar.
     pub fn new(grm: &YaccGrammar<StorageT>) -> Self {
         let mut firsts = YaccFirsts {
@@ -142,20 +138,19 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::types::Storage;
+
     use super::{
         super::{YaccGrammar, YaccKind, YaccOriginalActionKind},
         YaccFirsts,
     };
-    use num_traits::{AsPrimitive, PrimInt, Unsigned};
 
-    fn has<StorageT: 'static + PrimInt + Unsigned>(
+    fn has<StorageT: Storage>(
         grm: &YaccGrammar<StorageT>,
         firsts: &YaccFirsts<StorageT>,
         rn: &str,
         should_be: Vec<&str>,
-    ) where
-        usize: AsPrimitive<StorageT>,
-    {
+    ) {
         let ridx = grm.rule_idx(rn).unwrap();
         for tidx in grm.iter_tidxs() {
             let n = grm.token_name(tidx).unwrap_or("<no name>");

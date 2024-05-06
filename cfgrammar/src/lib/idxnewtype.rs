@@ -3,6 +3,7 @@
 
 use std::mem::size_of;
 
+use crate::types::Storage;
 use num_traits::{PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,12 @@ macro_rules! IdxNewtype {
             pub fn as_storaget(&self) -> T {
                 let $n(st) = self;
                 *st
+            }
+        }
+
+        impl<T: Storage> $n<T> {
+            pub fn from_usize(x: usize) -> Self {
+                $n(T::from_as_(x))
             }
         }
     }

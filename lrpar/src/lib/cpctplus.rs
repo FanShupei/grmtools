@@ -7,9 +7,8 @@ use std::{
 };
 
 use cactus::Cactus;
-use cfgrammar::{Span, TIdx};
+use cfgrammar::{Span, Storage, TIdx};
 use lrtable::{Action, StIdx};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 
 use super::{
     dijkstra::dijkstra,
@@ -45,7 +44,7 @@ struct PathFNode<StorageT> {
     cf: u16,
 }
 
-impl<StorageT: PrimInt + Unsigned> PathFNode<StorageT> {
+impl<StorageT: Copy> PathFNode<StorageT> {
     fn last_repair(&self) -> Option<Repair<StorageT>> {
         match *self.repairs.val().unwrap() {
             RepairMerge::Repair(r) => Some(r),
@@ -55,14 +54,14 @@ impl<StorageT: PrimInt + Unsigned> PathFNode<StorageT> {
     }
 }
 
-impl<StorageT: Hash + PrimInt + Unsigned> Hash for PathFNode<StorageT> {
+impl<StorageT: Hash> Hash for PathFNode<StorageT> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.pstack.hash(state);
         self.laidx.hash(state);
     }
 }
 
-impl<StorageT: PrimInt + Unsigned> PartialEq for PathFNode<StorageT> {
+impl<StorageT: Eq + Copy> PartialEq for PathFNode<StorageT> {
     fn eq(&self, other: &PathFNode<StorageT>) -> bool {
         if self.laidx != other.laidx || self.pstack != other.pstack {
             return false;
@@ -97,33 +96,30 @@ impl<StorageT: PrimInt + Unsigned> PartialEq for PathFNode<StorageT> {
     }
 }
 
-impl<StorageT: PrimInt + Unsigned> Eq for PathFNode<StorageT> {}
+impl<StorageT: Eq + Copy> Eq for PathFNode<StorageT> {}
 
 struct CPCTPlus<
     'a,
     'b: 'a,
     'input: 'b,
-    StorageT: 'static + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
-> where
-    usize: AsPrimitive<StorageT>,
+> 
 {
     parser: &'a Parser<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>,
 }
 
 pub(super) fn recoverer<
     'a,
-    StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
 >(
     parser: &'a Parser<StorageT, LexerTypesT, ActionT, ParamT>,
 ) -> Box<dyn Recoverer<StorageT, LexerTypesT, ActionT, ParamT> + 'a>
-where
-    usize: AsPrimitive<StorageT>,
 {
     Box::new(CPCTPlus { parser })
 }
@@ -132,14 +128,12 @@ impl<
         'a,
         'b: 'a,
         'input: 'b,
-        StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+        StorageT: Storage,
         LexerTypesT: LexerTypes<StorageT = StorageT>,
         ActionT: 'a,
         ParamT: Copy,
     > Recoverer<StorageT, LexerTypesT, ActionT, ParamT>
     for CPCTPlus<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>
-where
-    usize: AsPrimitive<StorageT>,
 {
     fn recover(
         &self,
@@ -267,13 +261,11 @@ impl<
         'a,
         'b: 'a,
         'input: 'b,
-        StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+        StorageT: Storage,
         LexerTypesT: LexerTypes<StorageT = StorageT>,
         ActionT: 'a,
         ParamT: Copy,
     > CPCTPlus<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>
-where
-    usize: AsPrimitive<StorageT>,
 {
     fn insert(&self, n: &PathFNode<StorageT>, nbrs: &mut Vec<(u16, PathFNode<StorageT>)>) {
         let laidx = n.laidx;
@@ -378,7 +370,7 @@ where
         in_laidx: usize,
         cnds: Vec<PathFNode<StorageT>>,
     ) -> Vec<Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>> {
-        fn traverse<StorageT: PrimInt>(
+        fn traverse<StorageT: Storage>(
             rm: &Cactus<RepairMerge<StorageT>>,
         ) -> Vec<Vec<Repair<StorageT>>> {
             let mut out = Vec::new();
@@ -454,7 +446,7 @@ where
 /// distance and a new pstack.
 fn apply_repairs<
     'a,
-    StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
@@ -466,8 +458,6 @@ fn apply_repairs<
     spans: &mut Option<&mut Vec<Span>>,
     repairs: &[ParseRepair<LexerTypesT::LexemeT, StorageT>],
 ) -> usize
-where
-    usize: AsPrimitive<StorageT>,
 {
     for r in repairs.iter() {
         match *r {
@@ -493,15 +483,14 @@ where
 
 /// Simplifies repair sequences, removes duplicates, and sorts them into order.
 fn simplify_repairs<
-    StorageT: 'static + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT,
     ParamT: Copy,
 >(
     parser: &Parser<StorageT, LexerTypesT, ActionT, ParamT>,
     all_rprs: &mut Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>,
-) where
-    usize: AsPrimitive<StorageT>,
+)
 {
     for rprs in &mut all_rprs.iter_mut() {
         // Remove shifts from the end of repairs
@@ -554,7 +543,7 @@ fn simplify_repairs<
 /// ordering is non-deterministic.
 fn rank_cnds<
     'a,
-    StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
@@ -565,8 +554,6 @@ fn rank_cnds<
     in_pstack: &[StIdx<StorageT>],
     in_cnds: Vec<Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>>,
 ) -> Vec<Vec<ParseRepair<LexerTypesT::LexemeT, StorageT>>>
-where
-    usize: AsPrimitive<StorageT>,
 {
     let mut cnds = Vec::new();
     let mut furthest = 0;
@@ -607,7 +594,7 @@ where
 }
 
 /// Do `repairs` end with enough Shift repairs to be considered a success node?
-fn ends_with_parse_at_least_shifts<StorageT: PrimInt + Unsigned>(
+fn ends_with_parse_at_least_shifts<StorageT: Storage>(
     repairs: &Cactus<RepairMerge<StorageT>>,
 ) -> bool {
     let mut shfts = 0;

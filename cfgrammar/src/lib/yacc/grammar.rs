@@ -1,13 +1,12 @@
 #![allow(clippy::derive_partial_eq_without_eq)]
 use std::{cell::RefCell, collections::HashMap, fmt::Write};
 
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use vob::Vob;
 
 use super::{ast, firsts::YaccFirsts, follows::YaccFollows, parser::YaccGrammarResult, YaccKind};
-use crate::{PIdx, RIdx, SIdx, Span, Symbol, TIdx};
+use crate::{types::Storage, PIdx, RIdx, SIdx, Span, Symbol, TIdx};
 
 const START_RULE: &str = "^";
 const IMPLICIT_RULE: &str = "~";
@@ -94,10 +93,7 @@ impl YaccGrammar<u32> {
     }
 }
 
-impl<StorageT: 'static + PrimInt + Unsigned> YaccGrammar<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> YaccGrammar<StorageT> {
     /// Takes as input a Yacc grammar of [`YaccKind`](enum.YaccKind.html) as a `String` `s` and returns a
     /// [`YaccGrammar`](grammar/struct.YaccGrammar.html) (or
     /// ([`YaccGrammarError`](grammar/enum.YaccGrammarError.html) on error).
@@ -189,7 +185,7 @@ where
         let mut rule_map = HashMap::<String, RIdx<StorageT>>::new();
         for (i, (v, _)) in rule_names.iter().enumerate() {
             rules_prods.push(Vec::new());
-            rule_map.insert(v.clone(), RIdx(i.as_()));
+            rule_map.insert(v.clone(), RIdx::from_usize(i));
         }
 
         let mut token_names: Vec<Option<(Span, String)>> = Vec::with_capacity(ast.tokens.len() + 1);
@@ -202,14 +198,14 @@ where
                 ast.epp.get(k).map(|(_, (s, _))| s).unwrap_or(k).clone(),
             ));
         }
-        let eof_token_idx = TIdx(token_names.len().as_());
+        let eof_token_idx = TIdx::from_usize(token_names.len());
         token_names.push(None);
         token_precs.push(None);
         token_epp.push(None);
         let mut token_map = HashMap::<String, TIdx<StorageT>>::new();
         for (i, v) in token_names.iter().enumerate() {
             if let Some((_, n)) = v.as_ref() {
-                token_map.insert(n.clone(), TIdx(i.as_()));
+                token_map.insert(n.clone(), TIdx::from_usize(i));
             }
         }
 
@@ -227,7 +223,7 @@ where
             if astrulename == &start_rule {
                 // Add the special start rule which has a single production which references a
                 // single rule.
-                rules_prods[usize::from(ridx)].push(PIdx(prods.len().as_()));
+                rules_prods[usize::from(ridx)].push(PIdx::from_usize(prods.len()));
                 let start_prod = match implicit_start_rule {
                     None => {
                         // Add ^: S;
@@ -252,7 +248,7 @@ where
                 // Add the intermediate start rule (handling implicit tokens at the beginning of
                 // the file):
                 //   ^~: ~ S;
-                rules_prods[usize::from(rule_map[astrulename])].push(PIdx(prods.len().as_()));
+                rules_prods[usize::from(rule_map[astrulename])].push(PIdx::from_usize(prods.len()));
                 prods.push(Some(vec![
                     Symbol::Rule(rule_map[implicit_rule.as_ref().unwrap()]),
                     Symbol::Rule(rule_map[start_name]),
@@ -265,13 +261,13 @@ where
                 let implicit_prods = &mut rules_prods[usize::from(rule_map[astrulename])];
                 // Add a production for each implicit token
                 for (t, _) in ast.implicit_tokens.as_ref().unwrap().iter() {
-                    implicit_prods.push(PIdx(prods.len().as_()));
+                    implicit_prods.push(PIdx::from_usize(prods.len()));
                     prods.push(Some(vec![Symbol::Token(token_map[t]), Symbol::Rule(ridx)]));
                     prod_precs.push(Some(None));
                     prods_rules.push(Some(ridx));
                 }
                 // Add an empty production
-                implicit_prods.push(PIdx(prods.len().as_()));
+                implicit_prods.push(PIdx::from_usize(prods.len()));
                 prods.push(Some(vec![]));
                 prod_precs.push(Some(None));
                 prods_rules.push(Some(ridx));
@@ -310,7 +306,7 @@ where
                         }
                     }
                 }
-                (*rule).push(PIdx(pidx.as_()));
+                (*rule).push(PIdx::from_usize(pidx));
                 prods[pidx] = Some(prod);
                 prod_precs[pidx] = Some(prec.map(|(prec, _)| prec));
                 prods_rules[pidx] = Some(ridx);
@@ -333,14 +329,14 @@ where
         assert!(!token_names.is_empty());
         assert!(!rule_names.is_empty());
         Ok(YaccGrammar {
-            rules_len: RIdx(rule_names.len().as_()),
+            rules_len: RIdx::from_usize(rule_names.len()),
             rule_names: rule_names.into_boxed_slice(),
-            tokens_len: TIdx(token_names.len().as_()),
+            tokens_len: TIdx::from_usize(token_names.len()),
             eof_token_idx,
             token_names: token_names.into_boxed_slice(),
             token_precs: token_precs.into_boxed_slice(),
             token_epp: token_epp.into_boxed_slice(),
-            prods_len: PIdx(prods.len().as_()),
+            prods_len: PIdx::from_usize(prods.len()),
             start_prod: rules_prods[usize::from(rule_map[&start_rule])][0],
             rules_prods: rules_prods
                 .iter()
@@ -374,7 +370,7 @@ where
         // We can use as_ safely, because we know that we're only generating integers from
         // 0..self.rules_len() and, since rules_len() returns an RIdx<StorageT>, then by
         // definition the integers we're creating fit within StorageT.
-        Box::new((0..usize::from(self.prods_len())).map(|x| PIdx(x.as_())))
+        Box::new((0..usize::from(self.prods_len())).map(|x| PIdx::from_usize(x)))
     }
 
     /// Get the sequence of symbols for production `pidx`. Panics if `pidx` doesn't exist.
@@ -386,7 +382,7 @@ where
     pub fn prod_len(&self, pidx: PIdx<StorageT>) -> SIdx<StorageT> {
         // Since we've already checked that StorageT can store all the symbols for every production
         // in the grammar, the call to as_ is safe.
-        SIdx(self.prods[usize::from(pidx)].len().as_())
+        SIdx::from_usize(self.prods[usize::from(pidx)].len())
     }
 
     /// Return the rule index of the production `pidx`. Panics if `pidx` doesn't exist.
@@ -417,7 +413,7 @@ where
         // We can use as_ safely, because we know that we're only generating integers from
         // 0..self.rules_len() and, since rules_len() returns an RIdx<StorageT>, then by
         // definition the integers we're creating fit within StorageT.
-        Box::new((0..usize::from(self.rules_len())).map(|x| RIdx(x.as_())))
+        Box::new((0..usize::from(self.rules_len())).map(|x| RIdx::from_usize(x)))
     }
 
     /// Return the productions for rule `ridx`. Panics if `ridx` doesn't exist.
@@ -455,7 +451,7 @@ where
             .position(|(x, _)| x == n)
             // The call to as_() is safe because rule_names is guaranteed to be
             // small enough to fit into StorageT
-            .map(|x| RIdx(x.as_()))
+            .map(|x| RIdx::from_usize(x))
     }
 
     /// What is the index of the start rule? Note that cfgrammar will have inserted at least one
@@ -475,7 +471,7 @@ where
         // We can use as_ safely, because we know that we're only generating integers from
         // 0..self.rules_len() and, since rules_len() returns an TIdx<StorageT>, then by
         // definition the integers we're creating fit within StorageT.
-        Box::new((0..usize::from(self.tokens_len())).map(|x| TIdx(x.as_())))
+        Box::new((0..usize::from(self.tokens_len())).map(|x| TIdx::from_usize(x)))
     }
 
     /// Return the index of the end token.
@@ -551,7 +547,7 @@ where
             .position(|x| x.as_ref().map_or(false, |(_, x)| x == n))
             // The call to as_() is safe because token_names is guaranteed to be small
             // enough to fit into StorageT
-            .map(|x| TIdx(x.as_()))
+            .map(|x| TIdx::from_usize(x))
     }
 
     /// Is the token `tidx` marked as `%avoid_insert`?
@@ -674,10 +670,7 @@ pub struct SentenceGenerator<'a, StorageT> {
     token_costs: Vec<u8>,
 }
 
-impl<'a, StorageT: 'static + PrimInt + Unsigned> SentenceGenerator<'a, StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<'a, StorageT: Storage> SentenceGenerator<'a, StorageT> {
     fn new<F>(grm: &'a YaccGrammar<StorageT>, token_cost: F) -> Self
     where
         F: Fn(TIdx<StorageT>) -> u8,
@@ -863,13 +856,7 @@ where
 /// Return the cost of a minimal string for each rule in this grammar. The cost of a
 /// token is specified by the user-defined `token_cost` function.
 #[allow(clippy::unnecessary_unwrap)]
-fn rule_min_costs<StorageT: 'static + PrimInt + Unsigned>(
-    grm: &YaccGrammar<StorageT>,
-    token_costs: &[u8],
-) -> Vec<u16>
-where
-    usize: AsPrimitive<StorageT>,
-{
+fn rule_min_costs<StorageT: Storage>(grm: &YaccGrammar<StorageT>, token_costs: &[u8]) -> Vec<u16> {
     // We use a simple(ish) fixed-point algorithm to determine costs. We maintain two lists
     // "costs" and "done". An integer costs[i] starts at 0 and monotonically increments
     // until done[i] is true, at which point costs[i] value is fixed. We also use the done
@@ -906,7 +893,7 @@ where
 
             // The call to as_() is guaranteed safe because done.len() == grm.rules_len(), and
             // we guarantee that grm.rules_len() can fit in StorageT.
-            for pidx in grm.rule_to_prods(RIdx(i.as_())).iter() {
+            for pidx in grm.rule_to_prods(RIdx::from_usize(i)).iter() {
                 let mut c: u16 = 0; // production cost
                 let mut cmplt = true;
                 for sym in grm.prod(*pidx) {
@@ -950,13 +937,7 @@ where
 /// representing "this rule can generate strings of infinite length"). The cost of a
 /// token is specified by the user-defined `token_cost` function.
 #[allow(clippy::unnecessary_unwrap)]
-fn rule_max_costs<StorageT: 'static + PrimInt + Unsigned>(
-    grm: &YaccGrammar<StorageT>,
-    token_costs: &[u8],
-) -> Vec<u16>
-where
-    usize: AsPrimitive<StorageT>,
-{
+fn rule_max_costs<StorageT: Storage>(grm: &YaccGrammar<StorageT>, token_costs: &[u8]) -> Vec<u16> {
     let mut done = vec![false; usize::from(grm.rules_len())];
     let mut costs = vec![0; usize::from(grm.rules_len())];
 
@@ -981,7 +962,7 @@ where
 
             // The call to as_() is guaranteed safe because done.len() == grm.rules_len(), and
             // we guarantee that grm.rules_len() can fit in StorageT.
-            'a: for pidx in grm.rule_to_prods(RIdx(i.as_())).iter() {
+            'a: for pidx in grm.rule_to_prods(RIdx::from_usize(i)).iter() {
                 let mut c: u16 = 0; // production cost
                 let mut cmplt = true;
                 for sym in grm.prod(*pidx) {

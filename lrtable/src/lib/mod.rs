@@ -6,7 +6,7 @@
 
 use std::{hash::Hash, mem::size_of};
 
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use num_traits::{PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub use crate::{
     stategraph::StateGraph,
     statetable::{Action, StateTable, StateTableError, StateTableErrorKind},
 };
-use cfgrammar::yacc::YaccGrammar;
+use cfgrammar::{yacc::YaccGrammar, Storage};
 
 macro_rules! IdxNewtype {
     ($(#[$attr:meta])* $n: ident) => {
@@ -48,6 +48,12 @@ macro_rules! IdxNewtype {
                 *st
             }
         }
+
+        impl<T: Storage> $n<T> {
+            pub fn from_usize(x: usize) -> Self {
+                $n(T::from_as_(x))
+            }
+        }
     }
 }
 
@@ -64,13 +70,10 @@ pub enum Minimiser {
     Pager,
 }
 
-pub fn from_yacc<StorageT: 'static + Hash + PrimInt + Unsigned>(
+pub fn from_yacc<StorageT: Storage>(
     grm: &YaccGrammar<StorageT>,
     m: Minimiser,
-) -> Result<(StateGraph<StorageT>, StateTable<StorageT>), StateTableError<StorageT>>
-where
-    usize: AsPrimitive<StorageT>,
-{
+) -> Result<(StateGraph<StorageT>, StateTable<StorageT>), StateTableError<StorageT>> {
     match m {
         Minimiser::Pager => {
             let sg = pager::pager_stategraph(grm);

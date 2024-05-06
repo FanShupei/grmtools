@@ -4,9 +4,8 @@ use std::{
     hash::{BuildHasherDefault, Hash},
 };
 
-use cfgrammar::{yacc::YaccGrammar, PIdx, SIdx, Symbol};
+use cfgrammar::{types::Storage, yacc::YaccGrammar, PIdx, SIdx, Symbol};
 use fnv::FnvHasher;
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use vob::Vob;
@@ -22,10 +21,7 @@ pub struct Itemset<StorageT: Eq + Hash> {
     pub items: HashMap<(PIdx<StorageT>, SIdx<StorageT>), Ctx, BuildHasherDefault<FnvHasher>>,
 }
 
-impl<StorageT: 'static + Hash + PrimInt + Unsigned> Itemset<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> Itemset<StorageT> {
     /// Create a blank Itemset.
     pub fn new(_: &YaccGrammar<StorageT>) -> Self {
         Itemset {
@@ -87,7 +83,7 @@ where
                     match zero_todos.iter_set_bits(..).next() {
                         Some(i) => {
                             // Since zero_todos.len() == grm.prods_len, the call to as_ is safe.
-                            pidx = PIdx(i.as_())
+                            pidx = PIdx::from_usize(i)
                         }
                         None => break,
                     }

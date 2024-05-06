@@ -1,10 +1,9 @@
 use std::marker::PhantomData;
 
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 use vob::Vob;
 
 use super::YaccGrammar;
-use crate::{RIdx, Symbol, TIdx};
+use crate::{types::Storage, RIdx, Symbol, TIdx};
 
 /// `Follows` stores all the Follow sets for a given grammar. For example, given this code and
 /// grammar:
@@ -27,10 +26,7 @@ pub struct YaccFollows<StorageT> {
     phantom: PhantomData<StorageT>,
 }
 
-impl<StorageT: 'static + PrimInt + Unsigned> YaccFollows<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> YaccFollows<StorageT> {
     /// Generates and returns the Follows set for the given grammar.
     pub fn new(grm: &YaccGrammar<StorageT>) -> Self {
         let mut follows = vec![
@@ -114,20 +110,19 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::types::Storage;
+
     use super::{
         super::{YaccGrammar, YaccKind, YaccOriginalActionKind},
         YaccFollows,
     };
-    use num_traits::{AsPrimitive, PrimInt, Unsigned};
 
-    fn has<StorageT: 'static + PrimInt + Unsigned>(
+    fn has<StorageT: Storage>(
         grm: &YaccGrammar<StorageT>,
         follows: &YaccFollows<StorageT>,
         rn: &str,
         should_be: Vec<&str>,
-    ) where
-        usize: AsPrimitive<StorageT>,
-    {
+    ) {
         let ridx = grm.rule_idx(rn).unwrap();
         for tidx in grm.iter_tidxs() {
             let n = if tidx == grm.eof_token_idx() {

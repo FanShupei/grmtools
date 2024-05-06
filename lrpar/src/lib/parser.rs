@@ -9,9 +9,8 @@ use std::{
 };
 
 use cactus::Cactus;
-use cfgrammar::{yacc::YaccGrammar, RIdx, Span, TIdx};
+use cfgrammar::{yacc::YaccGrammar, RIdx, Span, Storage, TIdx};
 use lrtable::{Action, StIdx, StateTable};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -34,10 +33,7 @@ pub enum Node<LexemeT: Lexeme<StorageT>, StorageT> {
     },
 }
 
-impl<LexemeT: Lexeme<StorageT>, StorageT: 'static + PrimInt + Unsigned> Node<LexemeT, StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<LexemeT: Lexeme<StorageT>, StorageT: Storage> Node<LexemeT, StorageT> {
     /// Return a pretty-printed version of this node.
     pub fn pp(&self, grm: &YaccGrammar<StorageT>, input: &str) -> String {
         let mut st = vec![(0, self)]; // Stack of (indent level, node) pairs
@@ -85,13 +81,11 @@ pub(super) struct Parser<
     'a,
     'b: 'a,
     'input: 'b,
-    StorageT: 'static + Eq + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT: 'a,
     ParamT: Copy,
-> where
-    usize: AsPrimitive<StorageT>,
-{
+> {
     rcvry_kind: RecoveryKind,
     pub(super) grm: &'a YaccGrammar<StorageT>,
     pub(super) token_cost: Box<TokenCostFn<'a, StorageT>>,
@@ -104,15 +98,8 @@ pub(super) struct Parser<
     param: ParamT,
 }
 
-impl<
-        'a,
-        'b: 'a,
-        'input: 'b,
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > Parser<'a, 'b, 'input, StorageT, LexerTypesT, Node<LexerTypesT::LexemeT, StorageT>, ()>
-where
-    usize: AsPrimitive<StorageT>,
+impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
+    Parser<'a, 'b, 'input, StorageT, LexerTypesT, Node<LexerTypesT::LexemeT, StorageT>, ()>
 {
     fn parse_generictree(
         rcvry_kind: RecoveryKind,
@@ -170,7 +157,6 @@ pub fn action_generictree<StorageT, LexerTypesT: LexerTypes>(
     _param: (),
 ) -> Node<LexerTypesT::LexemeT, StorageT>
 where
-    usize: AsPrimitive<LexerTypesT::StorageT>,
     LexerTypesT::LexemeT: Lexeme<StorageT>,
 {
     let mut nodes = Vec::with_capacity(astack.len());
@@ -183,15 +169,8 @@ where
     Node::Nonterm { ridx, nodes }
 }
 
-impl<
-        'a,
-        'b: 'a,
-        'input: 'b,
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > Parser<'a, 'b, 'input, StorageT, LexerTypesT, (), ()>
-where
-    usize: AsPrimitive<StorageT>,
+impl<'a, 'b: 'a, 'input: 'b, StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
+    Parser<'a, 'b, 'input, StorageT, LexerTypesT, (), ()>
 {
     fn parse_noaction(
         rcvry_kind: RecoveryKind,
@@ -238,13 +217,11 @@ impl<
         'a,
         'b: 'a,
         'input: 'b,
-        StorageT: 'static + Debug + Eq + Hash + PrimInt + Unsigned,
+        StorageT: Storage,
         LexerTypesT: LexerTypes<StorageT = StorageT>,
         ActionT: 'a,
         ParamT: Copy,
     > Parser<'a, 'b, 'input, StorageT, LexerTypesT, ActionT, ParamT>
-where
-    usize: AsPrimitive<StorageT>,
 {
     fn parse_actions(
         rcvry_kind: RecoveryKind,
@@ -592,12 +569,11 @@ where
 }
 
 pub(super) trait Recoverer<
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
+    StorageT: Storage,
     LexerTypesT: LexerTypes<StorageT = StorageT>,
     ActionT,
     ParamT: Copy,
-> where
-    usize: AsPrimitive<StorageT>,
+>
 {
     fn recover(
         &self,
@@ -625,20 +601,13 @@ pub enum RecoveryKind {
 /// to users, both can (at least conceptually) occur at any point of the intertwined lexing/parsing
 /// process.
 #[derive(Debug)]
-pub enum LexParseError<
-    StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-    LexerTypesT: LexerTypes<StorageT = StorageT>,
-> where
-    usize: AsPrimitive<StorageT>,
-{
+pub enum LexParseError<StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>> {
     LexError(LexerTypesT::LexErrorT),
     ParseError(ParseError<LexerTypesT::LexemeT, StorageT>),
 }
 
-impl<StorageT: Debug + Hash + PrimInt + Unsigned, LexerTypesT: LexerTypes<StorageT = StorageT>>
+impl<StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
     LexParseError<StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
 {
     /// A pretty-printer of a lexer/parser error. This isn't suitable for all purposes, but it's
     /// often good enough. The output format is not guaranteed to be stable but is likely to be of
@@ -726,12 +695,8 @@ where
     }
 }
 
-impl<
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > fmt::Display for LexParseError<StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
+impl<StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>> fmt::Display
+    for LexParseError<StorageT, LexerTypesT>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -741,34 +706,24 @@ where
     }
 }
 
-impl<
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > Error for LexParseError<StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
+impl<StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>> Error
+    for LexParseError<StorageT, LexerTypesT>
 {
 }
 
 impl<
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
+        StorageT: Storage,
         LexerTypesT: LexerTypes<StorageT = StorageT, LexErrorT = T>,
         T: LexError,
     > From<T> for LexParseError<StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
 {
     fn from(err: T) -> LexParseError<StorageT, LexerTypesT> {
         LexParseError::LexError(err)
     }
 }
 
-impl<
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > From<ParseError<LexerTypesT::LexemeT, StorageT>> for LexParseError<StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
+impl<StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
+    From<ParseError<LexerTypesT::LexemeT, StorageT>> for LexParseError<StorageT, LexerTypesT>
 {
     fn from(
         err: ParseError<LexerTypesT::LexemeT, StorageT>,
@@ -778,13 +733,7 @@ where
 }
 
 /// A run-time parser builder.
-pub struct RTParserBuilder<
-    'a,
-    StorageT: 'static + Eq + Debug + Hash + PrimInt + Unsigned,
-    LexerTypesT: LexerTypes<StorageT = StorageT>,
-> where
-    usize: AsPrimitive<StorageT>,
-{
+pub struct RTParserBuilder<'a, StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>> {
     grm: &'a YaccGrammar<StorageT>,
     stable: &'a StateTable<StorageT>,
     recoverer: RecoveryKind,
@@ -792,13 +741,8 @@ pub struct RTParserBuilder<
     phantom: PhantomData<(StorageT, LexerTypesT)>,
 }
 
-impl<
-        'a,
-        StorageT: 'static + Debug + Hash + PrimInt + Unsigned,
-        LexerTypesT: LexerTypes<StorageT = StorageT>,
-    > RTParserBuilder<'a, StorageT, LexerTypesT>
-where
-    usize: AsPrimitive<StorageT>,
+impl<'a, StorageT: Storage, LexerTypesT: LexerTypes<StorageT = StorageT>>
+    RTParserBuilder<'a, StorageT, LexerTypesT>
 {
     /// Create a new run-time parser from a `YaccGrammar`, and a `StateTable`.
     pub fn new(grm: &'a YaccGrammar<StorageT>, stable: &'a StateTable<StorageT>) -> Self {
@@ -931,7 +875,7 @@ impl<LexemeT: Lexeme<StorageT>, StorageT: Debug + Hash> Display for ParseError<L
 
 impl<LexemeT: Lexeme<StorageT>, StorageT: Debug + Hash> Error for ParseError<LexemeT, StorageT> {}
 
-impl<LexemeT: Lexeme<StorageT>, StorageT: Hash + PrimInt + Unsigned> ParseError<LexemeT, StorageT> {
+impl<LexemeT: Lexeme<StorageT>, StorageT: Debug + Hash + Copy> ParseError<LexemeT, StorageT> {
     /// Return the state table index where this error was detected.
     pub fn stidx(&self) -> StIdx<StorageT> {
         self.stidx

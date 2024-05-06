@@ -4,15 +4,13 @@ use std::{
     collections::hash_map::HashMap,
     error::Error,
     fmt::{self, Debug, Write},
-    hash::Hash,
     marker::PhantomData,
 };
 
 use cfgrammar::{
     yacc::{AssocKind, YaccGrammar},
-    PIdx, RIdx, Symbol, TIdx,
+    PIdx, RIdx, Storage, Symbol, TIdx,
 };
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use sparsevec::SparseVec;
@@ -27,10 +25,7 @@ pub struct Conflicts<StorageT> {
     shift_reduce: Vec<(TIdx<StorageT>, PIdx<StorageT>, StIdx<StorageT>)>,
 }
 
-impl<StorageT: 'static + Hash + PrimInt + Unsigned> Conflicts<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> Conflicts<StorageT> {
     /// Return an iterator over all reduce/reduce conflicts.
     pub fn rr_conflicts(
         &self,
@@ -163,10 +158,7 @@ const REDUCE: usize = 2;
 const ACCEPT: usize = 3;
 const ERROR: usize = 0;
 
-impl<StorageT: 'static + Hash + PrimInt + Unsigned> StateTable<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<StorageT: Storage> StateTable<StorageT> {
     pub fn new(
         grm: &YaccGrammar<StorageT>,
         sg: &StateGraph<StorageT>,
@@ -198,7 +190,7 @@ where
             .iter_closed_states()
             .enumerate()
             // Since stidx comes from the stategraph it can be safely cast to StorageT.
-            .map(|(x, y)| (StIdx(x.as_()), y))
+            .map(|(x, y)| (StIdx::from_usize(x), y))
         {
             // Populate reduce and accepts
             for (&(pidx, dot), ctx) in &state.items {
@@ -211,7 +203,7 @@ where
                         stidx,
                         // Since ctx is exactly tokens_len bits long, the call
                         // to as_ is safe.
-                        TIdx(tidx.as_()),
+                        TIdx::from_usize(tidx),
                     );
                     state_actions.set(off, true);
                     match StateTable::decode(actions[off]) {
@@ -245,7 +237,7 @@ where
                             {
                                 assert!(final_state.is_none());
                                 final_state = Some(stidx);
-                                actions[off] = StateTable::encode(Action::Accept);
+                                actions[off] = StateTable::encode(Action::Accept::<StorageT>);
                             } else {
                                 actions[off] = StateTable::encode(Action::Reduce(pidx));
                             }
@@ -384,9 +376,9 @@ where
             SHIFT => {
                 // Since val was originally stored in an StIdxStorageT, we know that it's safe to
                 // cast it back to an StIdxStorageT here.
-                Action::Shift(StIdx(val.as_()))
+                Action::Shift(StIdx::from_usize(val))
             }
-            REDUCE => Action::Reduce(PIdx(val.as_())),
+            REDUCE => Action::Reduce(PIdx::from_usize(val)),
             ACCEPT => Action::Accept,
             ERROR => Action::Error,
             _ => unreachable!(),
@@ -473,7 +465,7 @@ where
             Some(0) => None,
             // gotos can only contain state id's which we know can fit into StIdxStorageT so this
             // cast is safe
-            Some(i) => Some(StIdx((i - 1).as_())),
+            Some(i) => Some(StIdx::from_usize(i - 1)),
             None => unreachable!(),
         }
     }
@@ -489,7 +481,7 @@ where
     }
 }
 
-fn actions_offset<StorageT: PrimInt + Unsigned>(
+fn actions_offset<StorageT: Storage>(
     tokens_len: TIdx<StorageT>,
     stidx: StIdx<StorageT>,
     tidx: TIdx<StorageT>,
@@ -503,16 +495,13 @@ pub struct StateActionsIterator<'a, StorageT> {
     phantom: PhantomData<StorageT>,
 }
 
-impl<'a, StorageT: 'static + PrimInt + Unsigned> Iterator for StateActionsIterator<'a, StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<'a, StorageT: Storage> Iterator for StateActionsIterator<'a, StorageT> {
     type Item = TIdx<StorageT>;
 
     fn next(&mut self) -> Option<TIdx<StorageT>> {
         // Since self.iter's IterSetBits range as exactly tokens_len long, by definition `i -
         // self.start` fits into StorageT and thus the as_ call here is safe.
-        self.iter.next().map(|i| TIdx((i - self.start).as_()))
+        self.iter.next().map(|i| TIdx::from_usize(i - self.start))
     }
 }
 
@@ -522,20 +511,17 @@ pub struct CoreReducesIterator<'a, StorageT> {
     phantom: PhantomData<StorageT>,
 }
 
-impl<'a, StorageT: 'static + PrimInt + Unsigned> Iterator for CoreReducesIterator<'a, StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+impl<'a, StorageT: Storage> Iterator for CoreReducesIterator<'a, StorageT> {
     type Item = PIdx<StorageT>;
 
     fn next(&mut self) -> Option<PIdx<StorageT>> {
         // Since self.iter's IterSetBits range as exactly tokens_len long, by definition `i -
         // self.start` fits into StorageT and thus the as_ call here is safe.
-        self.iter.next().map(|i| PIdx((i - self.start).as_()))
+        self.iter.next().map(|i| PIdx::from_usize(i - self.start))
     }
 }
 
-fn resolve_shift_reduce<StorageT: 'static + Hash + PrimInt + Unsigned>(
+fn resolve_shift_reduce<StorageT: Storage>(
     grm: &YaccGrammar<StorageT>,
     actions: &mut [usize],
     off: usize,
@@ -544,9 +530,7 @@ fn resolve_shift_reduce<StorageT: 'static + Hash + PrimInt + Unsigned>(
     stidx: StIdx<StorageT>, // State we want to shift to
     shift_reduce: &mut Vec<(TIdx<StorageT>, PIdx<StorageT>, StIdx<StorageT>)>,
     conflict_stidx: StIdx<StorageT>, // State in which the conflict occured
-) where
-    usize: AsPrimitive<StorageT>,
-{
+) {
     let tidx_prec = grm.token_precedence(tidx);
     let pidx_prec = grm.prod_precedence(pidx);
     match (tidx_prec, pidx_prec) {
@@ -573,7 +557,7 @@ fn resolve_shift_reduce<StorageT: 'static + Hash + PrimInt + Unsigned>(
                         (AssocKind::Nonassoc, AssocKind::Nonassoc) => {
                             // Nonassociativity leads to a run-time parsing error, so we need to
                             // remove the action entirely.
-                            actions[off] = StateTable::encode(Action::Error);
+                            actions[off] = StateTable::encode(Action::Error::<StorageT>);
                         }
                         (_, _) => {
                             panic!("Not supported.");

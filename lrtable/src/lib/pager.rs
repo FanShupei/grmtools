@@ -1,10 +1,6 @@
-use std::{
-    collections::{hash_map::HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::{hash_map::HashMap, HashSet};
 
-use cfgrammar::{yacc::YaccGrammar, SIdx, Symbol};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use cfgrammar::{types::Storage, yacc::YaccGrammar, SIdx, Symbol};
 use vob::Vob;
 
 use crate::{itemset::Itemset, stategraph::StateGraph, StIdx};
@@ -23,7 +19,7 @@ use crate::{itemset::Itemset, stategraph::StateGraph, StIdx};
 //   Measuring and extending LR(1) parser generation
 //     Xin Chen, PhD thesis, University of Hawaii, 2009
 
-impl<StorageT: Hash + PrimInt + Unsigned> Itemset<StorageT> {
+impl<StorageT: Storage> Itemset<StorageT> {
     /// Return true if `other` is weakly compatible with `self`.
     fn weakly_compatible(&self, other: &Self) -> bool {
         // The weakly compatible check is one of the three core parts of Pager's algorithm
@@ -113,12 +109,9 @@ fn vob_intersect(v1: &Vob, v2: &Vob) -> bool {
 }
 
 /// Create a `StateGraph` from 'grm'.
-pub(crate) fn pager_stategraph<StorageT: 'static + Hash + PrimInt + Unsigned>(
+pub(crate) fn pager_stategraph<StorageT: Storage>(
     grm: &YaccGrammar<StorageT>,
-) -> StateGraph<StorageT>
-where
-    usize: AsPrimitive<StorageT>,
-{
+) -> StateGraph<StorageT> {
     // This function can be seen as a modified version of items() from Chen's dissertation.
 
     let firsts = grm.firsts();
@@ -301,12 +294,12 @@ where
         panic!("StorageT is not big enough to store this stategraph.");
     }
 
-    let start_state = StIdx::<StorageT>(start_state.as_storaget().as_());
+    let start_state = StIdx::<StorageT>::from_usize(start_state.as_storaget());
     let mut gc_edges_storaget = Vec::with_capacity(gc_edges.len());
     for x in gc_edges {
         let mut m = HashMap::with_capacity(x.len());
         for (k, v) in x {
-            m.insert(k, StIdx::<StorageT>(v.as_storaget().as_()));
+            m.insert(k, StIdx::<StorageT>::from_usize(v.as_storaget()));
         }
         gc_edges_storaget.push(m);
     }
@@ -316,17 +309,14 @@ where
 
 /// Garbage collect `zip_states` (of `(core_states, closed_state)`) and `edges`. Returns a new pair
 /// with unused states and their corresponding edges removed.
-fn gc<StorageT: 'static + Eq + Hash + PrimInt + Unsigned>(
+fn gc<StorageT: Storage>(
     mut states: Vec<(Itemset<StorageT>, Itemset<StorageT>)>,
     start_state: StIdx<usize>,
     mut edges: Vec<HashMap<Symbol<StorageT>, StIdx<usize>>>,
 ) -> (
     Vec<(Itemset<StorageT>, Itemset<StorageT>)>,
     Vec<HashMap<Symbol<StorageT>, StIdx<usize>>>,
-)
-where
-    usize: AsPrimitive<StorageT>,
-{
+) {
     // First of all, do a simple pass over all states. All state indexes reachable from the
     // start state will be inserted into the 'seen' set.
     let mut todo = HashSet::new();
